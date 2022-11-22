@@ -1,182 +1,204 @@
-import 'dart:convert';
-import 'package:arishti_chat_app/models/Message.dart';
-import 'package:arishti_chat_app/providers/MessageProvider.dart';
+import 'package:arishti_chat_app/main.dart';
+import 'package:arishti_chat_app/models/MessageModel.dart';
+import 'package:arishti_chat_app/providers/HomepageProvider.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/intl.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:provider/provider.dart';
 
 class Homepage extends StatefulWidget {
-  Homepage({Key? key}) : super(key: key);
+  final String name;
+  const Homepage({Key? key, required this.name}) : super(key: key);
 
   @override
   State<Homepage> createState() => _HomepageState();
 }
 
 class _HomepageState extends State<Homepage> {
-  TextEditingController messageController = TextEditingController();
   late IO.Socket socket;
+  final TextEditingController messageController = TextEditingController();
 
-  void sendMessage(String message) {
-    final messageJson = {'message': message, 'sentByMe': socket.id};
-    socket.emit('message', messageJson);
+  void sendMessage() {
+    socket.emit('message',
+        {'message': messageController.text.trim(), 'sender': widget.name});
+    messageController.clear();
   }
 
-  void setUpSocketListner() {
-    socket.on('message-recieve', (messageJson) {
-      try {
-        print(messageJson);
+  void connectSocket() {
+    socket.onConnect((data) => print('Connection established'));
+    socket.onConnectError((data) => print('Connect Error: $data'));
+    socket.onDisconnect((data) => print('Socket.IO server disconnected'));
+    socket.on('message', (data) {
+      // print('flutter recieving message');
+      Provider.of<HomepageProvider>(context, listen: false).addMessage(MessageModel.fromJson(data));
 
-        Provider.of<MessageProvider>(context, listen: false).addNewMessage(
-            Message(
-                message: messageJson['message'],
-                senderSocketId: messageJson['sentByMe'],
-                sentAt: DateTime.now()));
-        print('After provider');
-      } catch (e) {
-        print("Hello I am inside catch block");
-        print(e);
-      }
+
+      flutterLocalNotificationsPlugin.show(
+          0,
+          "${data['senderName']}",
+          "${data['message']}",
+          NotificationDetails(
+              android: AndroidNotificationDetails(channel.id, channel.name,
+                  channelDescription: channel.description,
+                  importance: Importance.high,
+                  color: Colors.blue,
+                  playSound: true,
+                  icon: '@mipmap/ic_launcher')));
     });
-  }
-
-  Future<void> FetchData() async {
-    try {
-      final url = Uri.parse('http://localhost:5000');
-      final response = await get(url);
-      final data = jsonDecode(response.body);
-      print('data fetched using nodejs api is : ${data}');
-    } catch (e) {
-      print('you are inside catch block : ${e}');
-    }
   }
 
   @override
   void initState() {
-    // TODO: implement initState
-    socket = IO.io(
-        'http://localhost:5000',
-        IO.OptionBuilder()
-            .setTransports(['websocket'])
-            .disableAutoConnect()
-            .build());
-
-    socket.connect();
-    setUpSocketListner();
-    FetchData();
-
     super.initState();
+    String web = 'http://localhost:5000';
+    String android = 'http://10.0.2.2:5000';
+    String herokuUrl = 'https://arishti-chat-app.herokuapp.com/';
+    socket = IO.io(
+      herokuUrl,
+      IO.OptionBuilder()
+          .setTransports(['websocket']).setQuery({'name': widget.name}).build(),
+    );
+    connectSocket();
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      RemoteNotification? notification = message.notification;
+      AndroidNotification? android = message.notification?.android;
+      if (notification != null && android != null) {
+        flutterLocalNotificationsPlugin.show(
+            notification.hashCode,
+            notification.title,
+            notification.body,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                channel.id,
+                channel.name,
+                channelDescription: channel.description,
+                color: Colors.blue,
+                playSound: true,
+                icon: '@mipmap/ic_launcher',
+              ),
+            ));
+      }
+    });
+
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      print('A new onMessageOpenedApp event was published!');
+      RemoteNotification? notification = message.notification;
+      AndroidNotification? android = message.notification?.android;
+      if (notification != null && android != null) {
+        showDialog(
+            context: context,
+            builder: (_) {
+              return AlertDialog(
+                title: Text(notification.title!),
+                content: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [Text(notification.body!)],
+                  ),
+                ),
+              );
+            });
+      }
+    });
+
+
+
+
+  }
+
+  @override
+  void dispose() {
+    messageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Welcome to Chat Room'),
+        title: Text('Chat Room'),
         centerTitle: true,
       ),
-      backgroundColor: Colors.black,
-      body: Container(
-        child: Column(
-          children: [
-            Expanded(
-                flex: 9,
-                child: Consumer<MessageProvider>(
-                  builder: (_, provider, __) {
-                    return ListView.builder(
-                      itemCount: provider.messageList.length,
-                      itemBuilder: (_, index) {
-                        String text = provider.messageList[index].message;
-                        String id = provider.messageList[index].senderSocketId;
-                        return MessageItem(
-                            message: text, sentByMe: id == socket.id);
-                      },
-                    );
-                  },
-                )),
-
-            // Expanded(
-            //     flex: 9,
-            //     child: ListView.builder(
-            //       itemCount: 10,
-            //       itemBuilder: (context, index) {
-            //         print("Inside builder");
-            //         return MessageItem(message : 'Hello', sentByMe: true);
-            //       },
-            //     )),
-
-            Expanded(
-                child: Container(
-              padding: EdgeInsets.all(10),
-              child: TextField(
-                cursorColor: Colors.purple,
-                style: TextStyle(color: Colors.white),
-                autofocus: true,
-                controller: messageController,
-                decoration: InputDecoration(
-                    enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white),
-                        borderRadius: BorderRadius.circular(10)),
-                    focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white),
-                        borderRadius: BorderRadius.circular(10)),
-                    suffixIcon: Container(
-                      margin: EdgeInsets.only(right: 5),
-                      decoration: BoxDecoration(
-                          color: Colors.purple,
-                          borderRadius: BorderRadius.circular(10)),
-                      child: IconButton(
-                        onPressed: () {
-                          sendMessage(messageController.text);
-                          messageController.text = "";
-                        },
-                        icon: Icon(Icons.send, color: Colors.white),
-                      ),
-                    )),
+      body: Column(
+        children: [
+          Expanded(
+            child: Consumer<HomepageProvider>(
+              builder: (_, provider, __) => ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemBuilder: (context, index) {
+                  final message = provider.messageList[index];
+                  return Wrap(
+                    alignment: message.senderName == widget.name
+                        ? WrapAlignment.end
+                        : WrapAlignment.start,
+                    children: [
+                      Card(
+                        color: message.senderName == widget.name
+                            ? Theme.of(context).primaryColorLight
+                            : Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment:
+                                message.senderName == widget.name
+                                    ? CrossAxisAlignment.end
+                                    : CrossAxisAlignment.start,
+                            children: [
+                              Text(message.message),
+                              Text(
+                                DateFormat('hh:mm a').format(message.sentAt),
+                                style: Theme.of(context).textTheme.caption,
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    ],
+                  );
+                },
+                separatorBuilder: (_, index) => const SizedBox(
+                  height: 5,
+                ),
+                itemCount: provider.messageList.length,
               ),
-            ))
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class MessageItem extends StatelessWidget {
-  MessageItem({Key? key, required this.message, required this.sentByMe})
-      : super(key: key);
-
-  final String message;
-  final bool sentByMe;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: sentByMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(5),
-          color: sentByMe ? Colors.purple : Colors.white,
-        ),
-        padding: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-        margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          textBaseline: TextBaseline.alphabetic,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          children: [
-            Text('${message}',
-                style: TextStyle(
-                    fontSize: 18,
-                    color: sentByMe ? Colors.white : Colors.purple)),
-            SizedBox(width: 5),
-            Text("10:30 PM",
-                style: TextStyle(
-                    fontSize: 10,
-                    color: (sentByMe ? Colors.white : Colors.purple)
-                        .withOpacity(0.7)))
-          ],
-        ),
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+            ),
+            child: SafeArea(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: messageController,
+                      decoration: InputDecoration(
+                        hintText: 'Message',
+                        // border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      if (messageController.text.trim().isNotEmpty) {
+                        sendMessage();
+                      }
+                    },
+                    icon: const Icon(Icons.send),
+                  )
+                ],
+              ),
+            ),
+          )
+        ],
       ),
     );
   }

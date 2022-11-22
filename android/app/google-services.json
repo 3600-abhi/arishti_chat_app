@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "460135207444",
+    "project_id": "arishti-chat-app",
+    "storage_bucket": "arishti-chat-app.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:460135207444:android:add8d8cceb2ef9a7e64d01",
+        "android_client_info": {
+          "package_name": "com.example.arishti_chat_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "460135207444-t5043v1b1c935qd3g1jpo09ugnj5mgib.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAjLJZYsFZpnCiJRIs6ToJodnB0zlzHjYU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "460135207444-t5043v1b1c935qd3g1jpo09ugnj5mgib.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
